@@ -103,7 +103,7 @@ static void dumpHMM( FILE *fp, HMM *hmm )
    }
 }
 
-static void dumpHMM2File( char *filename, HMM *hmm)
+static void dumpHMM2File(const char *filename, HMM *hmm)
 {
    FILE *fp = open_or_die( filename, "w");
    dumpHMM(fp, hmm);

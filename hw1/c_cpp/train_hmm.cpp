@@ -67,6 +67,13 @@ void forward_procedure(const HMM* hmm, double alpha[MAX_SEQ][MAX_STATE], const S
             alpha[t][i] *= hmm->observation[sequence.observ[t]][i];
         }
     }
+    //for(int t=0 ; t<sequence.length ; ++t) {
+    //    for(int i=0 ; i<hmm->state_num ; ++i) {
+    //        cout << alpha[t][i] << "    ";
+    //    }
+    //    cout << endl;
+    //}
+    //cout << "===================" << endl;
 }
 
 void backward_procedure(const HMM* hmm, double beta[MAX_SEQ][MAX_STATE], const Sequence &sequence)
@@ -88,34 +95,48 @@ void backward_procedure(const HMM* hmm, double beta[MAX_SEQ][MAX_STATE], const S
             }
         }
     }
+    //for(int t=0 ; t<sequence.length ; ++t) {
+    //    for(int i=0 ; i<hmm->state_num ; ++i) {
+    //        cout << beta[t][i] << "    ";
+    //    }
+    //    cout << endl;
+    //}
+    //cout << "===================" << endl;
 }
 
 void gamma_cal(
         const HMM *hmm,
-        int sequenceLength,
+        const Sequence &sequence,
         const double alpha[MAX_SEQ][MAX_STATE],
         const double beta[MAX_SEQ][MAX_STATE],
-        double gamma[MAX_SEQ][MAX_STATE]
+        double gamma[MAX_SEQ][MAX_STATE],
+        double sumGamma[MAX_SEQ][MAX_STATE],
+        double sumGammaObserv[MAX_OBSERV][MAX_STATE]
         )
 {
-    for(int t=0 ; t<sequenceLength ; ++t) {
+    for(int t=0 ; t<sequence.length ; ++t) {
         double denominator = 0.0f;
-        for(int j=0 ; j<hmm->state_num ; ++j) {
-            denominator += alpha[t][j] * beta[t][j];
+        for(int i=0 ; i<hmm->state_num ; ++i) {
+            denominator += alpha[t][i] * beta[t][i];
         }
 
         for(int i=0 ; i<hmm->state_num ; ++i) {
             double numerator = alpha[t][i] * beta[t][i];
-            if(denominator == 0) { // TODO:!
-                //cout << "gamma_cal: demonicator=0, numerator=" << numerator << endl;
-                //exit(-1);
-            }
-            else {
+            if(denominator != 0) {
                 gamma[t][i] = numerator / denominator;
+                sumGamma[t][i] += gamma[t][i];
+                sumGammaObserv[sequence.observ[t]][i] += gamma[t][i];
             }
         }
-
     }
+
+    //for(int t=0 ; t<sequenceLength ; ++t) {
+    //    for(int i=0 ; i<hmm->state_num ; ++i) {
+    //        cout << gamma[t][i] << "    ";
+    //    }
+    //    cout << endl;
+    //}
+    //cout << "==========================" << endl;
 }
 
 void epsilon_cal(
@@ -123,7 +144,8 @@ void epsilon_cal(
         const Sequence &sequence,
         const double alpha[MAX_SEQ][MAX_STATE],
         const double beta[MAX_SEQ][MAX_STATE],
-        double epsilon[MAX_SEQ-1][MAX_STATE][MAX_STATE]
+        double epsilon[MAX_SEQ-1][MAX_STATE][MAX_STATE],
+        double sumEpsilon[MAX_SEQ][MAX_STATE][MAX_STATE]
         )
 {
     for(int t=0 ; t<sequence.length-1 ; ++t) {
@@ -137,79 +159,37 @@ void epsilon_cal(
         for(int i=0 ; i<hmm->state_num ; ++i) {
             for(int j=0 ; j<hmm->state_num ; ++j) {
                 double numerator = alpha[t][i] * hmm->transition[i][j] * hmm->observation[sequence.observ[t+1]][j] * beta[t+1][j];
-                if(denominator == 0) { // TODO:!
-                    //cout << "epsilon_cal: demonicator=0, numerator=" << numerator << endl;
-                    //exit(-1);
-                }
-                else {
+                if(denominator != 0) {
                     epsilon[t][i][j] = numerator / denominator;
+                    sumEpsilon[t][i][j] += epsilon[t][i][j];
                 }
             }
         }
+        //double prob_sum = 0.0f;
+        //for(int i=0 ; i<hmm->state_num ; ++i) {
+        //    for(int j=0 ; j<hmm->state_num ; ++j) {
+        //        epsilon[t][i][j] = alpha[t][i] * hmm->transition[i][j] * hmm->observation[sequence.observ[t+1]][j] * beta[t+1][j];
+        //        prob_sum += epsilon[t][i][j];
+        //    }
+        //}
+        //if(prob_sum!=0) {
+        //    for(int i=0 ; i<hmm->state_num ; ++i) {
+        //        for(int j=0 ; j<hmm->state_num ; ++j) {
+        //            epsilon[t][i][j] /= prob_sum;
+        //        }
+        //    }
+        //}
     }
-}
-
-void update(
-        HMM *hmm,
-        const double gamma[MAX_SEQ][MAX_STATE],
-        const double epsilon[MAX_SEQ-1][MAX_STATE][MAX_STATE],
-        const Sequence &sequence
-        )
-{
-    // hmm->initial
-    for(int i=0 ; i<hmm->state_num ; ++i)
-        hmm->initial[i] = gamma[0][i];
-
-    // hmm->transition
-    for(int i=0 ; i<hmm->state_num ; ++i) {
-        double denominator = 0.0f;
-        for(int t=0 ; t<sequence.length-1 ; ++t) {
-            denominator += gamma[t][i];
-        }
-        for(int j=0 ; j<hmm->state_num ; ++j) {
-            double numerator = 0.0f;
-            for(int t=0 ; t<sequence.length-1 ; ++t) {
-                numerator += epsilon[t][i][j];
-            }
-            if(denominator == 0) { // TODO:!
-                //cout << "train_hmm: demonicator=0, numerator=" << numerator << endl;
-                //exit(-1);
-            }
-            else {
-                hmm->transition[i][j] = numerator / denominator;
-            }
-        }
-    }
-
-    // hmm->observation
-    for(int i=0 ; i<hmm->state_num ; ++i) {
-        double numerators[MAX_OBSERV] = { 0.0f };
-        double denominator = 0.0f;
-        for(int t=0 ; t<sequence.length ; ++t) { // TODO: t: sequence.length & T: MAX_SEQ ?
-            numerators[sequence.observ[t]] += gamma[t][i];
-            denominator += gamma[t][i];
-        }
-        if(denominator == 0) { // TODO:!
-            //cout << "train_hmm: demonicator=0" << endl;
-            //exit(-1);
-        }
-        else {
-            for(int k=0 ; k<MAX_OBSERV ; ++k) {
-                hmm->observation[k][i] = numerators[k] / denominator;
-            }
-        }
-    }
-    //for(int k=0 ; k<hmm->observ_num ; ++k) {
-    //    for(int j=0 ; j<hmm->state_num ; ++j) {
-    //        double numerators[MAX_STATE] = { 0.0f };
-    //        double denominator = 0.0f;
-    //        for(int t=0 ; t<sequence.length ; ++t) {
-    //            denominator += gamma[t][j];
-    //            numerators[sequence.observ[t]] += gamma[t][j];
+    //for(int t=0 ; t<sequence.length-1 ; ++t) {
+    //    for(int i=0 ; i<hmm->state_num ; ++i) {
+    //        for(int j=0 ; j<hmm->state_num ; ++j) {
+    //            cout << epsilon[t][i][j] << "    ";
     //        }
-    //        hmm->observation[k][j] = numerator / denominator;
+    //        cout << endl;
     //    }
+    //    cout << "------------------" << endl;
     //}
+    //cout << "==================" << endl;
 }
 
 int main(int argc, char **argv)
@@ -231,27 +211,76 @@ int main(int argc, char **argv)
 	loadHMM(&hmm, model_init);
     vector<Sequence> sequences(load_sequences(input_model_name));
 
+
     for(int n=0 ; n<iteration ; ++n) {
+        double sumGamma[MAX_SEQ][MAX_STATE] = { {0.0f} };
+        double sumGammaObserv[MAX_OBSERV][MAX_STATE] = { {0.0f} };
+        double sumEpsilon[MAX_SEQ][MAX_STATE][MAX_STATE] = { { {0.0f} } };
+
+        double updateInitial[MAX_STATE] = {0.0f};
+        double updateTransitionNumerator[MAX_STATE][MAX_STATE] = { {0.0f} };
+        double updateTransitionDenominator[MAX_STATE] = {0.0f};
+        double updateObservationNumerator[MAX_OBSERV][MAX_STATE] = { {0.0f} };
+        double updateObservationDenominator[MAX_STATE] = {0.0f};
         for(auto &sequence: sequences) {
             double alpha[MAX_SEQ][MAX_STATE] = { {0.0f} };
             double beta[MAX_SEQ][MAX_STATE] = { {0.0f} };
+
             double gamma[MAX_SEQ][MAX_STATE] = { {0.0f} };
             double epsilon[MAX_SEQ-1][MAX_STATE][MAX_STATE] = { { {0.0f} } };
+
             forward_procedure(&hmm, alpha, sequence);
             backward_procedure(&hmm, beta, sequence);
-            gamma_cal(&hmm, sequence.length, alpha, beta, gamma);
-            epsilon_cal(&hmm, sequence, alpha, beta, epsilon);
+            gamma_cal(&hmm, sequence, alpha, beta, gamma, sumGamma, sumGammaObserv);
+            epsilon_cal(&hmm, sequence, alpha, beta, epsilon, sumEpsilon);
+        }
 
-            for(int i=0 ; i<sequence.length ; ++i) {
-                for(int j=0 ; j<hmm.state_num ; ++j)
-                    cout << gamma[i][j] << "    ";
-                cout << endl;
+        // Update To HMM
+        double reverseSeqNum = 1.0f/sequences.size();
+        for(int i=0 ; i<hmm.state_num ; ++i)
+            hmm.initial[i] = sumGamma[0][i] * reverseSeqNum;
+
+        for(int i=0 ; i<hmm.state_num ; ++i) {
+            double denominator = 0.0f;
+            for(int t=0 ; t<sequences[0].length-1 ; ++t) { // TODO:
+                denominator += sumGamma[t][i];
+            }
+            for(int j=0 ; j<hmm.state_num ; ++j) {
+                double numerator = 0.0f;
+                for(int t=0 ; t<sequences[0].length-1 ; ++t) { // TODO:
+                    numerator += sumEpsilon[t][i][j];
+                }
+                if(denominator!=0) {
+                    hmm.transition[i][j] = numerator / denominator;
+                }
+                else {
+                    cout << "[Error] Update transition fail." << endl;
+                    exit(0);
+                }
+            }
+        }
+
+        for(int i=0 ; i<hmm.state_num ; ++i) {
+            double denominator = 0.0f;
+            double numerator = 0.0f;
+            for(int t=0 ; t<sequences[0].length ; ++t) { // TODO:
+                denominator += sumGamma[t][i];
+            }
+            for(int o=0 ; o<hmm.observ_num ; ++o) {
+                numerator = sumGammaObserv[o][i];
+                if(denominator!=0) {
+                    hmm.observation[o][i] = numerator / denominator;
+                }
+                else {
+                    cout << "[Error] Update observation fail." << endl;
+                    exit(0);
+                }
             }
 
-            update(&hmm, gamma, epsilon, sequence);
         }
     }
-    dumpHMM(stderr, &hmm);
+    //dumpHMM(stderr, &hmm);
+    dumpHMM2File(output_model_name, &hmm);
 
     return 0;
 }
