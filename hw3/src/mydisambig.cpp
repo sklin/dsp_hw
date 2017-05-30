@@ -6,6 +6,7 @@
 #include <string>
 #include <map>
 #include <algorithm> // for max_element
+#include <limits> // for numeric_limits
 
 #include <stdio.h>
 
@@ -54,6 +55,13 @@ Big5 StringToBig5(const string& str)
         exit(-1);
     }
     return CharToBig5(str[0], str[1]);
+}
+
+void printBig5(Big5 w)
+{
+    char tmp[3];
+    Big5ToChar(w, tmp);
+    cout << tmp;
 }
 
 class MyDisambig {
@@ -118,6 +126,7 @@ MyDisambig::MyDisambig(const char *textFilename, const char *mapFilename, const 
     inFile.close();
 #ifdef DEBUG_MESSAGE
     cout << "content.size(): " << content.size() << endl;
+    /*
     for(auto &line: content) {
         cout << line << endl;
     }
@@ -129,6 +138,7 @@ MyDisambig::MyDisambig(const char *textFilename, const char *mapFilename, const 
         }
         cout << endl;
     }
+    */
 
 #endif
 
@@ -176,7 +186,21 @@ void MyDisambig::Transform()
 {
     if(order == 2) {
         for(auto &seq: contentBig5) {
-            //vector<Big5> ret = Viterbi(seq);
+            vector<Big5> ret = Viterbi(seq);
+            printf("0x%hhX, 0x%hhX\n", ret[18] >> 8, ret[18] & 0xff);
+            //printBig5(ret[18]);
+            //printBig5(ret[19]);
+            //cout << endl;
+            for(auto w: seq) {
+                printBig5(w);
+                cout << " ";
+            }
+            cout << endl;
+            for(auto w: ret) {
+                printBig5(w);
+                cout << " ";
+            }
+            cout << endl;
         }
     }
 }
@@ -190,12 +214,17 @@ vector<Big5> MyDisambig::Viterbi(vector<Big5> &seq)
     // Because #states of each observ. is not the same,
     //  I use std::vector to store delta values.
     vector<vector<double> > delta(seq.size());
-    vector<vector<int> > psi(seq.size());
-    for(int i=0 ; i<seqSize ; ++i) {
-        if(mapping.count(seq[i])!=0) {
-            delta[i].resize(mapping[seq[i]].size(), 0.0f);
-            psi[i].resize(mapping[seq[i]].size(), -1);
-            //cout << mapping[seq[i]].size() << endl;
+    vector<vector<int> > psi(seq.size()); // psi(t, q_t) -> q_t-1
+    for(int t=0 ; t<seqSize ; ++t) {
+        if(mapping.count(seq[t])!=0) {
+            delta[t].resize(mapping[seq[t]].size(), 0.0f);
+            psi[t].resize(mapping[seq[t]].size(), -1);
+        }
+        else {
+            cout << "Mapping does not contains '";
+            printBig5(seq[t]);
+            cout << "'" << endl;
+            exit(-1); // TODO: If it happens, fix it.
         }
     }
 
@@ -212,7 +241,7 @@ vector<Big5> MyDisambig::Viterbi(vector<Big5> &seq)
     for(int t=1 ; t<seqSize ; ++t) {
         for(int i=0 ; i<mapping[seq[t]].size() ; ++i) { // mapping[seq[t]].size() == delta[t].size()
             // find max getBigramProb(seq[) j for j=0~delta[t-1].size()-1
-            double maxProb = 0.0f;
+            double maxProb = numeric_limits<double>::lowest();
             int index = -1;
             for(int j=0 ; j<mapping[seq[t-1]].size() ; ++j) {
                 char w1[3], w2[3];
@@ -224,12 +253,13 @@ vector<Big5> MyDisambig::Viterbi(vector<Big5> &seq)
                     index = j;
                 }
             }
-            delta[t][i] = maxProb * delta[t-1][index]; // TODO: index here causes the segment fault
+            //cout << "delta[t-1].size(): " << delta[t-1].size() << "\t\t";
+            //cout << "index: " << index << endl;
+            delta[t][i] = maxProb + delta[t-1][index];
             psi[t][i] = index;
         }
     }
 
-    /*
     //double finalProb = *max_element(delta[seqSize-1].begin(), delta[seqSize-1].end());
     double maxProb = 0.0f;
     int index = -1;
@@ -244,13 +274,15 @@ vector<Big5> MyDisambig::Viterbi(vector<Big5> &seq)
     vector<Big5> ans(seq.size());
     ans[seq.size()-1] = mapping[seq[seq.size()-1]][index];
     for(int t=seq.size()-2 ; t>=0 ; --t) {
-        ans[t] = mapping[seq[t]][ psi[t+1][seq[t+1]] ];
+        ans[t] = mapping[seq[t]][index]; // TODO: 
+        index =  psi[t][index];
     }
+    //cout << "seq.size(): " << seq.size() << endl;
+    //cout << "ans.size(): " << ans.size() << endl;
     return ans;
-    */
 }
 
-// Get P(W1) -- unigram
+// Get P(W1) -- unigram (retrun Log Prob.)
 double MyDisambig::getUnigramProb(const char *w1)
 {
     VocabIndex wid1 = voc.getIndex(w1);
@@ -262,7 +294,7 @@ double MyDisambig::getUnigramProb(const char *w1)
     return lm->wordProb( wid1, context);
 }
 
-// Get P(W2 | W1) -- bigram
+// Get P(W2 | W1) -- bigram (retrun Log Prob.)
 double MyDisambig::getBigramProb(const char *w1, const char *w2)
 {
     VocabIndex wid1 = voc.getIndex(w1);
@@ -277,7 +309,7 @@ double MyDisambig::getBigramProb(const char *w1, const char *w2)
     return lm->wordProb( wid2, context);
 }
 
-// Get P(W3 | W1, W2) -- trigram
+// Get P(W3 | W1, W2) -- trigram (retrun Log Prob.)
 double MyDisambig::getTrigramProb(const char *w1, const char *w2, const char *w3) 
 {
     VocabIndex wid1 = voc.getIndex(w1);
