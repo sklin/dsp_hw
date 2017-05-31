@@ -184,21 +184,23 @@ MyDisambig::~MyDisambig()
 
 void MyDisambig::Transform()
 {
-    if(order == 2) {
-        for(auto &seq: contentBig5) {
-            vector<Big5> ret = Viterbi(seq);
-            for(auto w: seq) {
-                printBig5(w);
-                cout << " ";
+    if(order != 2 && order != 3) {
+        cout << "Can only deal with order = 2 or 3." << endl;
+        exit(-1);
+    }
+    for(auto &seq: contentBig5) {
+        vector<Big5> ret = Viterbi(seq);
+        for(auto w: seq) {
+            printBig5(w);
+            cout << " ";
 
-            }
-            cout << endl;
-            for(auto w: ret) {
-                printBig5(w);
-                cout << " ";
-            }
-            cout << endl;
         }
+        cout << endl;
+        for(auto w: ret) {
+            printBig5(w);
+            cout << " ";
+        }
+        cout << endl;
     }
 }
 
@@ -238,24 +240,59 @@ vector<Big5> MyDisambig::Viterbi(vector<Big5> &seq)
     for(int t=1 ; t<seqSize ; ++t) {
         //cout << "t: " << t << ", #states: " << mapping[seq[t]].size() << endl;
         for(int i=0 ; i<mapping[seq[t]].size() ; ++i) { // mapping[seq[t]].size() == delta[t].size()
-            // find max getBigramProb(seq[) j for j=0~delta[t-1].size()-1
-            double maxProb = numeric_limits<double>::lowest();
-            int index = -1;
-            for(int j=0 ; j<mapping[seq[t-1]].size() ; ++j) {
-                char w1[3], w2[3];
-                Big5ToChar(mapping[seq[t-1]][j], w1);
-                Big5ToChar(mapping[seq[t]][i], w2);
-                double prob = getBigramProb(w1, w2) + delta[t-1][j];
-                if(prob > maxProb) {
-                    maxProb = prob;
-                    index = j;
+            if(order == 2) {
+                // find max getBigramProb(seq[) j for j=0~delta[t-1].size()-1
+                double maxProb = numeric_limits<double>::lowest();
+                int index = -1;
+                for(int j=0 ; j<mapping[seq[t-1]].size() ; ++j) {
+                    char w1[3], w2[3];
+                    Big5ToChar(mapping[seq[t-1]][j], w1);
+                    Big5ToChar(mapping[seq[t]][i], w2);
+                    double prob = getBigramProb(w1, w2) + delta[t-1][j];
+                    if(prob > maxProb) {
+                        maxProb = prob;
+                        index = j;
+                    }
                 }
+                //cout << "delta[t-1].size(): " << delta[t-1].size() << "\t\t";
+                //cout << "index: " << index << endl;
+                delta[t][i] = maxProb;
+                psi[t][i] = index;
+                //cout << "\tstate[" << i << "]: " << maxProb << ", max is " << index << endl;
             }
-            //cout << "delta[t-1].size(): " << delta[t-1].size() << "\t\t";
-            //cout << "index: " << index << endl;
-            delta[t][i] = maxProb;
-            psi[t][i] = index;
-            //cout << "\tstate[" << i << "]: " << maxProb << ", max is " << index << endl;
+            else if(order == 3) {
+                double maxProb = numeric_limits<double>::lowest();
+                int index = -1;
+                for(int j=0 ; j<mapping[seq[t-1]].size() ; ++j) {
+                    if(t==1) {
+                        char w1[3], w2[3];
+                        Big5ToChar(mapping[seq[t-1]][j], w1);
+                        Big5ToChar(mapping[seq[t]][i], w2);
+                        double prob = getBigramProb(w1, w2) + delta[t-1][j];
+                        if(prob > maxProb) {
+                            maxProb = prob;
+                            index = j;
+                        }
+                    }
+                    else { // t>1
+                        char w1[3], w2[3], w3[3];
+                        Big5ToChar(mapping[seq[t-2]][ psi[t-1][j] ], w1);
+                        Big5ToChar(mapping[seq[t-1]][j], w2);
+                        Big5ToChar(mapping[seq[t]][i], w3);
+                        double prob = getTrigramProb(w1, w2, w3) + delta[t-1][j];
+                        if(prob > maxProb) {
+                            maxProb = prob;
+                            index = j;
+                        }
+                    }
+                }
+                delta[t][i] = maxProb;
+                psi[t][i] = index;
+            }
+            else {
+                // It should not arrive here
+                exit(-1);
+            }
         }
         //cout << "=======================" << endl;
     }
@@ -280,8 +317,6 @@ vector<Big5> MyDisambig::Viterbi(vector<Big5> &seq)
         ans[t] = mapping[seq[t]][index]; // TODO: 
     }
     cout << endl;
-    //cout << "seq.size(): " << seq.size() << endl;
-    //cout << "ans.size(): " << ans.size() << endl;
     return ans;
 }
 
