@@ -187,13 +187,10 @@ void MyDisambig::Transform()
     if(order == 2) {
         for(auto &seq: contentBig5) {
             vector<Big5> ret = Viterbi(seq);
-            printf("0x%hhX, 0x%hhX\n", ret[18] >> 8, ret[18] & 0xff);
-            //printBig5(ret[18]);
-            //printBig5(ret[19]);
-            //cout << endl;
             for(auto w: seq) {
                 printBig5(w);
                 cout << " ";
+
             }
             cout << endl;
             for(auto w: ret) {
@@ -239,15 +236,16 @@ vector<Big5> MyDisambig::Viterbi(vector<Big5> &seq)
 
     // Recursion, t=1
     for(int t=1 ; t<seqSize ; ++t) {
+        //cout << "t: " << t << ", #states: " << mapping[seq[t]].size() << endl;
         for(int i=0 ; i<mapping[seq[t]].size() ; ++i) { // mapping[seq[t]].size() == delta[t].size()
             // find max getBigramProb(seq[) j for j=0~delta[t-1].size()-1
             double maxProb = numeric_limits<double>::lowest();
             int index = -1;
             for(int j=0 ; j<mapping[seq[t-1]].size() ; ++j) {
                 char w1[3], w2[3];
-                Big5ToChar(mapping[seq[t]][i], w1);
-                Big5ToChar(mapping[seq[t-1]][j], w2);
-                double prob = getBigramProb(w1, w2);
+                Big5ToChar(mapping[seq[t-1]][j], w1);
+                Big5ToChar(mapping[seq[t]][i], w2);
+                double prob = getBigramProb(w1, w2) + delta[t-1][j];
                 if(prob > maxProb) {
                     maxProb = prob;
                     index = j;
@@ -255,13 +253,15 @@ vector<Big5> MyDisambig::Viterbi(vector<Big5> &seq)
             }
             //cout << "delta[t-1].size(): " << delta[t-1].size() << "\t\t";
             //cout << "index: " << index << endl;
-            delta[t][i] = maxProb + delta[t-1][index];
+            delta[t][i] = maxProb;
             psi[t][i] = index;
+            //cout << "\tstate[" << i << "]: " << maxProb << ", max is " << index << endl;
         }
+        //cout << "=======================" << endl;
     }
 
     //double finalProb = *max_element(delta[seqSize-1].begin(), delta[seqSize-1].end());
-    double maxProb = 0.0f;
+    double maxProb = numeric_limits<double>::lowest();
     int index = -1;
     for(int i=0 ; i<delta[seqSize-1].size() ; ++i) {
         double prob = delta[seqSize-1][i];
@@ -273,10 +273,13 @@ vector<Big5> MyDisambig::Viterbi(vector<Big5> &seq)
 
     vector<Big5> ans(seq.size());
     ans[seq.size()-1] = mapping[seq[seq.size()-1]][index];
+    cout << index << ", ";
     for(int t=seq.size()-2 ; t>=0 ; --t) {
+        index =  psi[t+1][index];
+        cout << index << ", ";
         ans[t] = mapping[seq[t]][index]; // TODO: 
-        index =  psi[t][index];
     }
+    cout << endl;
     //cout << "seq.size(): " << seq.size() << endl;
     //cout << "ans.size(): " << ans.size() << endl;
     return ans;
